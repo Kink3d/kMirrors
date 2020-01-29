@@ -1,9 +1,9 @@
 {
-    "name": "com.author.packagename",
-    "description": "A short description of the package.",
-    "version": "major.minor.patch",
-    "unity": "yyyy.minor",
-    "displayName": "Display Name",
+    "name": "com.kink3d.mirrors",
+    "description": "Planar reflections for Unity's Universal Render Pipeline.",
+    "version": "0.1.0",
+    "unity": "2019.3",
+    "displayName": "kMirrors",
     "dependencies": {
     }
 }
