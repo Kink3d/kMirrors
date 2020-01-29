@@ -1,0 +1,9 @@
+{
+    "name": "com.author.packagename",
+    "description": "A short description of the package.",
+    "version": "major.minor.patch",
+    "unity": "yyyy.minor",
+    "displayName": "Display Name",
+    "dependencies": {
+    }
+}
