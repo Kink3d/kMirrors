@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
@@ -17,6 +18,12 @@ namespace kTools.Mirrors
             UseSourceCameraSettings,
             Off,
         }
+
+        public enum OutputScope
+        {
+            Global,
+            Local,
+        }
 #endregion
 
 #region Serialized Fields
@@ -25,6 +32,12 @@ namespace kTools.Mirrors
 
         [SerializeField]
         int m_LayerMask;
+
+        [SerializeField]
+        OutputScope m_Scope;
+
+        [SerializeField]
+        List<Renderer> m_Renderers;
 
         [SerializeField]
         float m_TextureScale;
@@ -40,21 +53,29 @@ namespace kTools.Mirrors
         const string kGizmoPath = "Packages/com.kink3d.mirrors/Gizmos/Mirror.png";
         Camera m_ReflectionCamera;
         UniversalAdditionalCameraData m_CameraData;
+        RenderTexture m_RenderTexture;
+        RenderTextureDescriptor m_PreviousDescriptor;
 #endregion
 
 #region Constructors
         public Mirror()
         {
             // Set data
-            m_TextureScale = 1.0f;
             m_Offset = 0.01f;
             m_LayerMask = -1;
+            m_Scope = OutputScope.Global;
+            m_Renderers = new List<Renderer>();
+            m_TextureScale = 1.0f;
+            m_AllowHDR = MirrorCameraOverride.UseSourceCameraSettings;
+            m_AllowMSAA = MirrorCameraOverride.UseSourceCameraSettings;
         }
 #endregion
 
 #region Properties
         public float clipPlaneOffset => m_Offset;
         public LayerMask layerMask => m_LayerMask;
+        public OutputScope scope => m_Scope;
+        public List<Renderer> renderers => m_Renderers;
         public float textureScale => m_TextureScale;
         public MirrorCameraOverride allowHDR => m_AllowHDR;
         public MirrorCameraOverride allowMSAA => m_AllowMSAA;
@@ -94,12 +115,19 @@ namespace kTools.Mirrors
         {
             // Callbacks
             RenderPipelineManager.beginCameraRendering -= BeginCameraRendering;
+
+            // Dispose RenderTexture
+            SafeDestroyObject(m_RenderTexture);
         }
 #endregion
 
 #region Initialization
         void InitializeCamera()
         {
+            // Setup Camera
+            reflectionCamera.cameraType = CameraType.Reflection;
+            reflectionCamera.targetTexture = m_RenderTexture;
+
             // Setup AdditionalCameraData
             cameraData.renderShadows = false;
             cameraData.requiresColorOption = CameraOverrideOption.Off;
@@ -107,38 +135,52 @@ namespace kTools.Mirrors
         }
 #endregion
 
+#region RenderTexture
+        RenderTextureDescriptor GetDescriptor(Camera camera)
+        {
+            // Get scaled Texture size
+            var width = (int)Mathf.Max(camera.pixelWidth * textureScale, 4);
+            var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
+
+            // Get Texture format
+            var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
+            var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
+            return new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
+        }
+#endregion
+
 #region Rendering
         void BeginCameraRendering(ScriptableRenderContext context, Camera camera)
         {
-            // Never render Mirrors for Preview cameras
-            if(camera.cameraType == CameraType.Preview)
+            // Never render Mirrors for Preview or Reflection cameras
+            if(camera.cameraType == CameraType.Preview || camera.cameraType == CameraType.Reflection)
                 return;
 
             // Profiling command
-            CommandBuffer cmd = CommandBufferPool.Get("Mirror");
-            using (new ProfilingSample(cmd, "Mirror"))
+            CommandBuffer cmd = CommandBufferPool.Get($"Mirror {gameObject.GetInstanceID()}");
+            using (new ProfilingSample(cmd, $"Mirror {gameObject.GetInstanceID()}"))
             {
                 ExecuteCommand(context, cmd);
 
-                // Create target texture
-                var width = (int)Mathf.Max(camera.pixelWidth * textureScale, 4);
-                var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
-                var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
-                var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
-                var rendertextureDesc = new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
-                var renderTexture = RenderTexture.GetTemporary(rendertextureDesc);
-                reflectionCamera.targetTexture = renderTexture;
+                // Test for Descriptor changes
+                var descriptor = GetDescriptor(camera);
+                if(!descriptor.Equals(m_PreviousDescriptor))
+                {
+                    // Dispose RenderTexture
+                    if(m_RenderTexture != null)
+                    {
+                        SafeDestroyObject(m_RenderTexture);
+                    }
+                    
+                    // Create new RenderTexture
+                    m_RenderTexture = new RenderTexture(descriptor);
+                    m_PreviousDescriptor = descriptor;
+                    reflectionCamera.targetTexture = m_RenderTexture;
+                }
                 
-                // Render
+                // Execute
                 RenderMirror(context, camera);
-
-                // Set texture to shaders
-                cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
-                ExecuteCommand(context, cmd);
-
-                // Cleanup
-                reflectionCamera.targetTexture = null;
-                RenderTexture.ReleaseTemporary(renderTexture);
+                SetShaderUniforms(context, m_RenderTexture, cmd);
             }
             ExecuteCommand(context, cmd);
         }
@@ -210,6 +252,27 @@ namespace kTools.Mirrors
         }
 #endregion
 
+#region Output
+        void SetShaderUniforms(ScriptableRenderContext context, RenderTexture renderTexture, CommandBuffer cmd)
+        {
+            switch(scope)
+            {
+                case OutputScope.Global:
+                    cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
+                    ExecuteCommand(context, cmd);
+                    break;
+                case OutputScope.Local:
+                    var block = new MaterialPropertyBlock();
+                    block.SetTexture("_LocalReflectionMap", renderTexture);
+                    foreach(var renderer in renderers)
+                    {
+                        renderer.SetPropertyBlock(block);
+                    }
+                    break;
+            }
+        }
+#endregion
+
 #region CommandBufer
         void ExecuteCommand(ScriptableRenderContext context, CommandBuffer cmd)
         {
@@ -218,13 +281,27 @@ namespace kTools.Mirrors
         }
 #endregion
 
+#region Object
+        void SafeDestroyObject(Object obj)
+        {
+            if(obj == null)
+                return;
+            
+            #if UNITY_EDITOR
+            DestroyImmediate(obj);
+            #else
+            Destroy(obj);
+            #endif
+        }
+#endregion
+
 #region AssetMenu
 #if UNITY_EDITOR
-        // Add a menu item to Decals
+        // Add a menu item to Mirrors
         [UnityEditor.MenuItem("GameObject/kTools/Mirror", false, 10)]
         static void CreateMirrorObject(UnityEditor.MenuCommand menuCommand)
         {
-            // Create Decal
+            // Create Mirror
             GameObject go = new GameObject("New Mirror", typeof(Mirror));
             
             // Transform
