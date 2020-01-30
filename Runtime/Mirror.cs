@@ -106,11 +106,6 @@ namespace kTools.Mirrors
         {
             // Callbacks
             RenderPipelineManager.beginCameraRendering += BeginCameraRendering;
-
-            // Initialize RenderTexture
-            var descriptor = GetDescriptor();
-            m_PreviousDescriptor = descriptor;
-            m_RenderTexture = new RenderTexture(descriptor);
             
             // Initialize Components
             InitializeCamera();
@@ -122,22 +117,7 @@ namespace kTools.Mirrors
             RenderPipelineManager.beginCameraRendering -= BeginCameraRendering;
 
             // Dispose RenderTexture
-            DestroyObject(m_RenderTexture);
-        }
-
-        void Update()
-        {
-            var descriptor = GetDescriptor();
-            if(!descriptor.Equals(m_PreviousDescriptor))
-            {
-                if(m_RenderTexture != null)
-                {
-                    DestroyObject(m_RenderTexture);
-                }
-                
-                m_RenderTexture = new RenderTexture(descriptor);
-                m_PreviousDescriptor = descriptor;
-            }
+            SafeDestroyObject(m_RenderTexture);
         }
 #endregion
 
@@ -156,11 +136,14 @@ namespace kTools.Mirrors
 #endregion
 
 #region RenderTexture
-        RenderTextureDescriptor GetDescriptor()
+        RenderTextureDescriptor GetDescriptor(Camera camera)
         {
-            var width = (int)Mathf.Max(GetComponent<Camera>().pixelWidth * textureScale, 4);
-            var height = (int)Mathf.Max(GetComponent<Camera>().pixelHeight * textureScale, 4);
-            var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? GetComponent<Camera>().allowHDR : false;
+            // Get scaled Texture size
+            var width = (int)Mathf.Max(camera.pixelWidth * textureScale, 4);
+            var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
+
+            // Get Texture format
+            var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
             var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
             return new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
         }
@@ -169,7 +152,7 @@ namespace kTools.Mirrors
 #region Rendering
         void BeginCameraRendering(ScriptableRenderContext context, Camera camera)
         {
-            // Never render Mirrors for Preview cameras
+            // Never render Mirrors for Preview or Reflection cameras
             if(camera.cameraType == CameraType.Preview || camera.cameraType == CameraType.Reflection)
                 return;
 
@@ -179,17 +162,25 @@ namespace kTools.Mirrors
             {
                 ExecuteCommand(context, cmd);
 
-                // Create target texture
-                // reflectionCamera.targetTexture = m_RenderTexture;
+                // Test for Descriptor changes
+                var descriptor = GetDescriptor(camera);
+                if(!descriptor.Equals(m_PreviousDescriptor))
+                {
+                    // Dispose RenderTexture
+                    if(m_RenderTexture != null)
+                    {
+                        SafeDestroyObject(m_RenderTexture);
+                    }
+                    
+                    // Create new RenderTexture
+                    m_RenderTexture = new RenderTexture(descriptor);
+                    m_PreviousDescriptor = descriptor;
+                    reflectionCamera.targetTexture = m_RenderTexture;
+                }
                 
-                // Render
+                // Execute
                 RenderMirror(context, camera);
-
-                // Output
                 SetShaderUniforms(context, m_RenderTexture, cmd);
-
-                // Cleanup
-                // reflectionCamera.targetTexture = null;
             }
             ExecuteCommand(context, cmd);
         }
@@ -291,8 +282,11 @@ namespace kTools.Mirrors
 #endregion
 
 #region Object
-        void DestroyObject(Object obj)
+        void SafeDestroyObject(Object obj)
         {
+            if(obj == null)
+                return;
+            
             #if UNITY_EDITOR
             DestroyImmediate(obj);
             #else
@@ -303,11 +297,11 @@ namespace kTools.Mirrors
 
 #region AssetMenu
 #if UNITY_EDITOR
-        // Add a menu item to Decals
+        // Add a menu item to Mirrors
         [UnityEditor.MenuItem("GameObject/kTools/Mirror", false, 10)]
         static void CreateMirrorObject(UnityEditor.MenuCommand menuCommand)
         {
-            // Create Decal
+            // Create Mirror
             GameObject go = new GameObject("New Mirror", typeof(Mirror));
             
             // Transform
