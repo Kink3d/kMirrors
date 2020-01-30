@@ -145,7 +145,7 @@ namespace kTools.Mirrors
             // Get Texture format
             var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
             var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
-            return new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
+            return new RenderTextureDescriptor(width, height, renderTextureFormat, 16) { autoGenerateMips = true, useMipMap = true };
         }
 #endregion
 
@@ -255,15 +255,28 @@ namespace kTools.Mirrors
 #region Output
         void SetShaderUniforms(ScriptableRenderContext context, RenderTexture renderTexture, CommandBuffer cmd)
         {
+            var block = new MaterialPropertyBlock();
             switch(scope)
             {
                 case OutputScope.Global:
+                    // Globals
                     cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
                     ExecuteCommand(context, cmd);
+
+                    // Property Blocm
+                    block.SetFloat("_LocalMirror", 0.0f);
+                    foreach(var renderer in renderers)
+                    {
+                        renderer.SetPropertyBlock(block);
+                    }
                     break;
                 case OutputScope.Local:
-                    var block = new MaterialPropertyBlock();
+                    // Keywords
+                    Shader.EnableKeyword("_BLEND_MIRRORS");
+
+                    // Property Block
                     block.SetTexture("_LocalReflectionMap", renderTexture);
+                    block.SetFloat("_LocalMirror", 1.0f);
                     foreach(var renderer in renderers)
                     {
                         renderer.SetPropertyBlock(block);
