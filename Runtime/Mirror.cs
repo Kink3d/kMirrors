@@ -11,15 +11,29 @@ namespace kTools.Mirrors
     [RequireComponent(typeof(Camera), typeof(UniversalAdditionalCameraData))]
     public class Mirror : MonoBehaviour
     {
-#region Serialized Fields
-        [SerializeField]
-        float m_TextureScale;
+#region Enumerations
+        public enum MirrorCameraOverride
+        {
+            UseSourceCameraSettings,
+            Off,
+        }
+#endregion
 
+#region Serialized Fields
         [SerializeField]
         float m_Offset;
 
         [SerializeField]
         int m_LayerMask;
+
+        [SerializeField]
+        float m_TextureScale;
+
+        [SerializeField]
+        MirrorCameraOverride m_AllowHDR;
+
+        [SerializeField]
+        MirrorCameraOverride m_AllowMSAA;
 #endregion
 
 #region Fields
@@ -39,9 +53,11 @@ namespace kTools.Mirrors
 #endregion
 
 #region Properties
-        public float textureScale => m_TextureScale;
         public float clipPlaneOffset => m_Offset;
         public LayerMask layerMask => m_LayerMask;
+        public float textureScale => m_TextureScale;
+        public MirrorCameraOverride allowHDR => m_AllowHDR;
+        public MirrorCameraOverride allowMSAA => m_AllowMSAA;
 
         Camera reflectionCamera
         {
@@ -107,7 +123,9 @@ namespace kTools.Mirrors
                 // Create target texture
                 var width = (int)Mathf.Max(camera.pixelWidth * textureScale, 4);
                 var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
-                var rendertextureDesc = new RenderTextureDescriptor(width, height, RenderTextureFormat.Default, 16);
+                var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
+                var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
+                var rendertextureDesc = new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
                 var renderTexture = RenderTexture.GetTemporary(rendertextureDesc);
                 reflectionCamera.targetTexture = renderTexture;
                 
@@ -137,9 +155,10 @@ namespace kTools.Mirrors
             reflectionCamera.projectionMatrix = projectionMatrix;
             
             // Miscellanious camera settings
-            reflectionCamera.enabled = false;
             reflectionCamera.cullingMask = layerMask;
-            reflectionCamera.allowHDR = camera.allowHDR;
+            reflectionCamera.allowHDR = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
+            reflectionCamera.allowMSAA = allowMSAA == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowMSAA : false;
+            reflectionCamera.enabled = false;
 
             // Render reflection camera with inverse culling
             GL.invertCulling = true;
