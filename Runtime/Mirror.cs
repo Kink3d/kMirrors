@@ -8,6 +8,7 @@ namespace kTools.Mirrors
     /// Mirror Object component.
     /// </summary>
     [AddComponentMenu("kTools/Mirror"), ExecuteInEditMode]
+    [RequireComponent(typeof(Camera), typeof(UniversalAdditionalCameraData))]
     public class Mirror : MonoBehaviour
     {
 #region Serialized Fields
@@ -24,6 +25,7 @@ namespace kTools.Mirrors
 #region Fields
         const string kGizmoPath = "Packages/com.kink3d.mirrors/Gizmos/Mirror.png";
         Camera m_ReflectionCamera;
+        UniversalAdditionalCameraData m_CameraData;
 #endregion
 
 #region Constructors
@@ -40,13 +42,33 @@ namespace kTools.Mirrors
         public float textureScale => m_TextureScale;
         public float clipPlaneOffset => m_Offset;
         public LayerMask layerMask => m_LayerMask;
+
+        Camera reflectionCamera
+        {
+            get
+            {
+                if(m_ReflectionCamera == null)
+                    m_ReflectionCamera = GetComponent<Camera>();
+                return m_ReflectionCamera;
+            }
+        }
+
+        UniversalAdditionalCameraData cameraData
+        {
+            get
+            {
+                if(m_CameraData == null)
+                    m_CameraData = GetComponent<UniversalAdditionalCameraData>();
+                return m_CameraData;
+            }
+        }
 #endregion
 
 #region State
         void OnEnable()
         {
             // Callbacks
-            RenderPipelineManager.beginCameraRendering += Render;
+            RenderPipelineManager.beginCameraRendering += BeginCameraRendering;
             
             // Initialize Components
             InitializeCamera();
@@ -55,35 +77,14 @@ namespace kTools.Mirrors
         void OnDisable()
         {
             // Callbacks
-            RenderPipelineManager.beginCameraRendering -= Render;
-            
-            // Destroy Camera
-            if(m_ReflectionCamera)
-            {
-                m_ReflectionCamera.targetTexture = null;
-                #if UNITY_EDITOR
-                GameObject.DestroyImmediate(m_ReflectionCamera.gameObject);
-                #else
-                GameObject.Destroy(m_ReflectionCamera.gameObject);
-                #endif
-            }
+            RenderPipelineManager.beginCameraRendering -= BeginCameraRendering;
         }
 #endregion
 
 #region Initialization
         void InitializeCamera()
         {
-            // Create Camera
-            var cameraObj = new GameObject("Reflection Camera", typeof(Camera));
-            cameraObj.hideFlags = HideFlags.DontSave;
-
-            // Setup Reflection Camera
-            m_ReflectionCamera = cameraObj.GetComponent<Camera>();
-            m_ReflectionCamera.transform.SetParent(transform);
-            m_ReflectionCamera.enabled = false;
-
             // Setup AdditionalCameraData
-            var cameraData = cameraObj.AddComponent<UniversalAdditionalCameraData>();
             cameraData.renderShadows = false;
             cameraData.requiresColorOption = CameraOverrideOption.Off;
             cameraData.requiresDepthOption = CameraOverrideOption.Off;
@@ -91,20 +92,11 @@ namespace kTools.Mirrors
 #endregion
 
 #region Rendering
-        void Render(ScriptableRenderContext context, Camera camera)
+        void BeginCameraRendering(ScriptableRenderContext context, Camera camera)
         {
             // Never render Mirrors for Preview cameras
             if(camera.cameraType == CameraType.Preview)
                 return;
-            
-            // Test for SceneView camera
-            // Updating projection matrices for SceneView camera breaks gizmos
-            // TODO: This breaks scene view reflections. Re-use same camera instead
-            var isSceneViewCamera = false;
-            #if UNITY_EDITOR
-            var sceneView = UnityEditor.SceneView.currentDrawingSceneView;
-            isSceneViewCamera = sceneView != null && camera == sceneView.camera;
-            #endif
 
             // Profiling command
             CommandBuffer cmd = CommandBufferPool.Get("Mirror");
@@ -117,39 +109,47 @@ namespace kTools.Mirrors
                 var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
                 var rendertextureDesc = new RenderTextureDescriptor(width, height, RenderTextureFormat.Default, 16);
                 var renderTexture = RenderTexture.GetTemporary(rendertextureDesc);
-                m_ReflectionCamera.targetTexture = renderTexture;
+                reflectionCamera.targetTexture = renderTexture;
                 
-                if(!isSceneViewCamera)
-                {
-                    // Mirror the view matrix
-                    var mirrorMatrix = GetReflectionMatrix();
-                    m_ReflectionCamera.worldToCameraMatrix = camera.worldToCameraMatrix * mirrorMatrix;
-
-                    // Make oplique projection matrix where near plane is mirror plane
-                    var clipPlane = CameraSpacePlane();
-                    var projectionMatrix = camera.CalculateObliqueMatrix(clipPlane);
-                    m_ReflectionCamera.projectionMatrix = projectionMatrix;
-                }
-                
-                // Miscellanious camera settings
-                m_ReflectionCamera.cullingMask = layerMask;
-                m_ReflectionCamera.allowHDR = camera.allowHDR;
-
-                // Render reflection camera
-                UniversalRenderPipeline.RenderSingleCamera(context, m_ReflectionCamera);
+                // Render
+                RenderMirror(context, camera);
 
                 // Set texture to shaders
                 cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
                 ExecuteCommand(context, cmd);
 
                 // Cleanup
-                m_ReflectionCamera.targetTexture = null;
+                reflectionCamera.targetTexture = null;
                 RenderTexture.ReleaseTemporary(renderTexture);
             }
             ExecuteCommand(context, cmd);
         }
 
-        Matrix4x4 GetReflectionMatrix()
+        void RenderMirror(ScriptableRenderContext context, Camera camera)
+        {
+            // Mirror the view matrix
+            var mirrorMatrix = GetMirrorMatrix();
+            reflectionCamera.worldToCameraMatrix = camera.worldToCameraMatrix * mirrorMatrix;
+
+            // Make oplique projection matrix where near plane is mirror plane
+            var mirrorPlane = GetMirrorPlane(reflectionCamera);
+            var projectionMatrix = camera.CalculateObliqueMatrix(mirrorPlane);
+            reflectionCamera.projectionMatrix = projectionMatrix;
+            
+            // Miscellanious camera settings
+            reflectionCamera.enabled = false;
+            reflectionCamera.cullingMask = layerMask;
+            reflectionCamera.allowHDR = camera.allowHDR;
+
+            // Render reflection camera with inverse culling
+            GL.invertCulling = true;
+            UniversalRenderPipeline.RenderSingleCamera(context, reflectionCamera);
+            GL.invertCulling = false;
+        }
+#endregion
+
+#region Projection
+        Matrix4x4 GetMirrorMatrix()
         {
             // Setup
             var position = transform.position;
@@ -178,18 +178,16 @@ namespace kTools.Mirrors
             };
             return mirrorMatrix;
         }
-
-        // Calculate mirror plane in camera space.
-        Vector4 CameraSpacePlane()
+    
+        Vector4 GetMirrorPlane(Camera camera)
         {
+            // Calculate mirror plane in camera space.
             var pos = transform.position - Vector3.forward * 0.1f;
             var normal = transform.forward;
             var offsetPos = pos + normal * clipPlaneOffset;
-            var cpos = m_ReflectionCamera.worldToCameraMatrix.MultiplyPoint(offsetPos);
-            var cnormal = m_ReflectionCamera.worldToCameraMatrix.MultiplyVector(normal).normalized;
-            var plane = new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
-
-            return plane;
+            var cpos = camera.worldToCameraMatrix.MultiplyPoint(offsetPos);
+            var cnormal = camera.worldToCameraMatrix.MultiplyVector(normal).normalized;
+            return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
         }
 #endregion
 
@@ -199,6 +197,25 @@ namespace kTools.Mirrors
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }
+#endregion
+
+#region AssetMenu
+#if UNITY_EDITOR
+        // Add a menu item to Decals
+        [UnityEditor.MenuItem("GameObject/kTools/Mirror", false, 10)]
+        static void CreateMirrorObject(UnityEditor.MenuCommand menuCommand)
+        {
+            // Create Decal
+            GameObject go = new GameObject("New Mirror", typeof(Mirror));
+            
+            // Transform
+            UnityEditor.GameObjectUtility.SetParentAndAlign(go, menuCommand.context as GameObject);
+            
+            // Undo and Selection
+            UnityEditor.Undo.RegisterCreatedObjectUndo(go, "Create " + go.name);
+            UnityEditor.Selection.activeObject = go;
+        }
+#endif
 #endregion
 
 #region Gizmos
