@@ -18,25 +18,25 @@ namespace kTools.Mirrors.Editor
 
             // Properties
             public static readonly GUIContent Offset = new GUIContent("Offset",
-                "DecalData defining options and inputs for this Decal.");
+                "Offset value for oplique near clip plane.");
 
             public static readonly GUIContent LayerMask = new GUIContent("Layer Mask",
-                "DecalData defining options and inputs for this Decal.");
+                "Which layers should the Mirror render.");
 
             public static readonly GUIContent Scope = new GUIContent("Scope",
-                "DecalData defining options and inputs for this Decal.");
+                "Global output renders to the global texture. Only one Mirror can be global. Local output renders to one texture per Mirror, this is set on all elements of the Renderers list.");
 
             public static readonly GUIContent Renderers = new GUIContent("Renderers",
-                "DecalData defining options and inputs for this Decal.");
+                "Renderers to set the reflection texture on.");
             
             public static readonly GUIContent TextureScale = new GUIContent("Texture Scale",
-                "DecalData defining options and inputs for this Decal.");
+                "Scale value applied to the size of the source camera texture.");
 
             public static readonly GUIContent HDR = new GUIContent("HDR",
-                "DecalData defining options and inputs for this Decal.");
+                "Should reflections be rendered in HDR.");
 
             public static readonly GUIContent MSAA = new GUIContent("MSAA",
-                "DecalData defining options and inputs for this Decal.");
+                "Should reflections be resolved with MSAA.");
         }
 
         struct PropertyNames

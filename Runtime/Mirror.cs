@@ -13,12 +13,18 @@ namespace kTools.Mirrors
     public class Mirror : MonoBehaviour
     {
 #region Enumerations
+        /// <summary>
+        /// Camera override enumeration for Mirror properties
+        /// <summary>
         public enum MirrorCameraOverride
         {
             UseSourceCameraSettings,
             Off,
         }
 
+        /// <summary>
+        /// Scope enumeration for Mirror output destination
+        /// <summary>
         public enum OutputScope
         {
             Global,
@@ -72,12 +78,28 @@ namespace kTools.Mirrors
 #endregion
 
 #region Properties
-        public float clipPlaneOffset => m_Offset;
+        /// <summary>Offset value for oplique near clip plane.</summary>
+        public float offest => m_Offset;
+
+        /// <summary>Which layers should the Mirror render.</summary>
         public LayerMask layerMask => m_LayerMask;
+
+        /// <summary>
+        /// Global output renders to the global texture. Only one Mirror can be global.
+        /// Local output renders to one texture per Mirror, this is set on all elements of the Renderers list.
+        /// </summary>
         public OutputScope scope => m_Scope;
+
+        /// <summary>Renderers to set the reflection texture on.</summary>
         public List<Renderer> renderers => m_Renderers;
+
+        /// <summary>Scale value applied to the size of the source camera texture.</summary>
         public float textureScale => m_TextureScale;
+
+        /// <summary>Should reflections be rendered in HDR.</summary>
         public MirrorCameraOverride allowHDR => m_AllowHDR;
+
+        /// <summary>Should reflections be resolved with MSAA.</summary>
         public MirrorCameraOverride allowMSAA => m_AllowMSAA;
 
         Camera reflectionCamera
@@ -215,7 +237,7 @@ namespace kTools.Mirrors
             // Setup
             var position = transform.position;
             var normal = transform.forward;
-            var depth = -Vector3.Dot(normal, position) - clipPlaneOffset;
+            var depth = -Vector3.Dot(normal, position) - offest;
 
             // Create matrix
             var mirrorMatrix = new Matrix4x4()
@@ -245,7 +267,7 @@ namespace kTools.Mirrors
             // Calculate mirror plane in camera space.
             var pos = transform.position - Vector3.forward * 0.1f;
             var normal = transform.forward;
-            var offsetPos = pos + normal * clipPlaneOffset;
+            var offsetPos = pos + normal * offest;
             var cpos = camera.worldToCameraMatrix.MultiplyPoint(offsetPos);
             var cnormal = camera.worldToCameraMatrix.MultiplyVector(normal).normalized;
             return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
