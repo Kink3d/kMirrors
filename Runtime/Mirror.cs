@@ -53,6 +53,8 @@ namespace kTools.Mirrors
         const string kGizmoPath = "Packages/com.kink3d.mirrors/Gizmos/Mirror.png";
         Camera m_ReflectionCamera;
         UniversalAdditionalCameraData m_CameraData;
+        RenderTexture m_RenderTexture;
+        RenderTextureDescriptor m_PreviousDescriptor;
 #endregion
 
 #region Constructors
@@ -104,6 +106,11 @@ namespace kTools.Mirrors
         {
             // Callbacks
             RenderPipelineManager.beginCameraRendering += BeginCameraRendering;
+
+            // Initialize RenderTexture
+            var descriptor = GetDescriptor();
+            m_PreviousDescriptor = descriptor;
+            m_RenderTexture = new RenderTexture(descriptor);
             
             // Initialize Components
             InitializeCamera();
@@ -113,6 +120,24 @@ namespace kTools.Mirrors
         {
             // Callbacks
             RenderPipelineManager.beginCameraRendering -= BeginCameraRendering;
+
+            // Dispose RenderTexture
+            DestroyObject(m_RenderTexture);
+        }
+
+        void Update()
+        {
+            var descriptor = GetDescriptor();
+            if(!descriptor.Equals(m_PreviousDescriptor))
+            {
+                if(m_RenderTexture != null)
+                {
+                    DestroyObject(m_RenderTexture);
+                }
+                
+                m_RenderTexture = new RenderTexture(descriptor);
+                m_PreviousDescriptor = descriptor;
+            }
         }
 #endregion
 
@@ -121,11 +146,23 @@ namespace kTools.Mirrors
         {
             // Setup Camera
             reflectionCamera.cameraType = CameraType.Reflection;
+            reflectionCamera.targetTexture = m_RenderTexture;
 
             // Setup AdditionalCameraData
             cameraData.renderShadows = false;
             cameraData.requiresColorOption = CameraOverrideOption.Off;
             cameraData.requiresDepthOption = CameraOverrideOption.Off;
+        }
+#endregion
+
+#region RenderTexture
+        RenderTextureDescriptor GetDescriptor()
+        {
+            var width = (int)Mathf.Max(GetComponent<Camera>().pixelWidth * textureScale, 4);
+            var height = (int)Mathf.Max(GetComponent<Camera>().pixelHeight * textureScale, 4);
+            var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? GetComponent<Camera>().allowHDR : false;
+            var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
+            return new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
         }
 #endregion
 
@@ -143,23 +180,16 @@ namespace kTools.Mirrors
                 ExecuteCommand(context, cmd);
 
                 // Create target texture
-                var width = (int)Mathf.Max(camera.pixelWidth * textureScale, 4);
-                var height = (int)Mathf.Max(camera.pixelHeight * textureScale, 4);
-                var hdr = allowHDR == MirrorCameraOverride.UseSourceCameraSettings ? camera.allowHDR : false;
-                var renderTextureFormat = hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
-                var rendertextureDesc = new RenderTextureDescriptor(width, height, renderTextureFormat, 16);
-                var renderTexture = RenderTexture.GetTemporary(rendertextureDesc);
-                reflectionCamera.targetTexture = renderTexture;
+                // reflectionCamera.targetTexture = m_RenderTexture;
                 
                 // Render
                 RenderMirror(context, camera);
 
                 // Output
-                SetShaderUniforms(context, renderTexture, cmd);
+                SetShaderUniforms(context, m_RenderTexture, cmd);
 
                 // Cleanup
-                reflectionCamera.targetTexture = null;
-                RenderTexture.ReleaseTemporary(renderTexture);
+                // reflectionCamera.targetTexture = null;
             }
             ExecuteCommand(context, cmd);
         }
@@ -257,6 +287,17 @@ namespace kTools.Mirrors
         {
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
+        }
+#endregion
+
+#region Object
+        void DestroyObject(Object obj)
+        {
+            #if UNITY_EDITOR
+            DestroyImmediate(obj);
+            #else
+            Destroy(obj);
+            #endif
         }
 #endregion
 
