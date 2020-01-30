@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
@@ -17,6 +18,12 @@ namespace kTools.Mirrors
             UseSourceCameraSettings,
             Off,
         }
+
+        public enum OutputScope
+        {
+            Global,
+            Local,
+        }
 #endregion
 
 #region Serialized Fields
@@ -25,6 +32,12 @@ namespace kTools.Mirrors
 
         [SerializeField]
         int m_LayerMask;
+
+        [SerializeField]
+        OutputScope m_Scope;
+
+        [SerializeField]
+        List<Renderer> m_Renderers;
 
         [SerializeField]
         float m_TextureScale;
@@ -46,15 +59,21 @@ namespace kTools.Mirrors
         public Mirror()
         {
             // Set data
-            m_TextureScale = 1.0f;
             m_Offset = 0.01f;
             m_LayerMask = -1;
+            m_Scope = OutputScope.Global;
+            m_Renderers = new List<Renderer>();
+            m_TextureScale = 1.0f;
+            m_AllowHDR = MirrorCameraOverride.UseSourceCameraSettings;
+            m_AllowMSAA = MirrorCameraOverride.UseSourceCameraSettings;
         }
 #endregion
 
 #region Properties
         public float clipPlaneOffset => m_Offset;
         public LayerMask layerMask => m_LayerMask;
+        public OutputScope scope => m_Scope;
+        public List<Renderer> renderers => m_Renderers;
         public float textureScale => m_TextureScale;
         public MirrorCameraOverride allowHDR => m_AllowHDR;
         public MirrorCameraOverride allowMSAA => m_AllowMSAA;
@@ -100,6 +119,9 @@ namespace kTools.Mirrors
 #region Initialization
         void InitializeCamera()
         {
+            // Setup Camera
+            reflectionCamera.cameraType = CameraType.Reflection;
+
             // Setup AdditionalCameraData
             cameraData.renderShadows = false;
             cameraData.requiresColorOption = CameraOverrideOption.Off;
@@ -111,12 +133,12 @@ namespace kTools.Mirrors
         void BeginCameraRendering(ScriptableRenderContext context, Camera camera)
         {
             // Never render Mirrors for Preview cameras
-            if(camera.cameraType == CameraType.Preview)
+            if(camera.cameraType == CameraType.Preview || camera.cameraType == CameraType.Reflection)
                 return;
 
             // Profiling command
-            CommandBuffer cmd = CommandBufferPool.Get("Mirror");
-            using (new ProfilingSample(cmd, "Mirror"))
+            CommandBuffer cmd = CommandBufferPool.Get($"Mirror {gameObject.GetInstanceID()}");
+            using (new ProfilingSample(cmd, $"Mirror {gameObject.GetInstanceID()}"))
             {
                 ExecuteCommand(context, cmd);
 
@@ -132,9 +154,8 @@ namespace kTools.Mirrors
                 // Render
                 RenderMirror(context, camera);
 
-                // Set texture to shaders
-                cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
-                ExecuteCommand(context, cmd);
+                // Output
+                SetShaderUniforms(context, renderTexture, cmd);
 
                 // Cleanup
                 reflectionCamera.targetTexture = null;
@@ -207,6 +228,27 @@ namespace kTools.Mirrors
             var cpos = camera.worldToCameraMatrix.MultiplyPoint(offsetPos);
             var cnormal = camera.worldToCameraMatrix.MultiplyVector(normal).normalized;
             return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
+        }
+#endregion
+
+#region Output
+        void SetShaderUniforms(ScriptableRenderContext context, RenderTexture renderTexture, CommandBuffer cmd)
+        {
+            switch(scope)
+            {
+                case OutputScope.Global:
+                    cmd.SetGlobalTexture("_ReflectionMap", renderTexture);
+                    ExecuteCommand(context, cmd);
+                    break;
+                case OutputScope.Local:
+                    var block = new MaterialPropertyBlock();
+                    block.SetTexture("_LocalReflectionMap", renderTexture);
+                    foreach(var renderer in renderers)
+                    {
+                        renderer.SetPropertyBlock(block);
+                    }
+                    break;
+            }
         }
 #endregion
 

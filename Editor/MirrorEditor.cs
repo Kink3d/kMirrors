@@ -22,6 +22,12 @@ namespace kTools.Mirrors.Editor
 
             public static readonly GUIContent LayerMask = new GUIContent("Layer Mask",
                 "DecalData defining options and inputs for this Decal.");
+
+            public static readonly GUIContent Scope = new GUIContent("Scope",
+                "DecalData defining options and inputs for this Decal.");
+
+            public static readonly GUIContent Renderers = new GUIContent("Renderers",
+                "DecalData defining options and inputs for this Decal.");
             
             public static readonly GUIContent TextureScale = new GUIContent("Texture Scale",
                 "DecalData defining options and inputs for this Decal.");
@@ -37,6 +43,8 @@ namespace kTools.Mirrors.Editor
         {
             public static readonly string Offset = "m_Offset";
             public static readonly string LayerMask = "m_LayerMask";
+            public static readonly string Scope = "m_Scope";
+            public static readonly string Renderers = "m_Renderers";
             public static readonly string TextureScale = "m_TextureScale";
             public static readonly string AllowHDR = "m_AllowHDR";
             public static readonly string AllowMSAA = "m_AllowMSAA";
@@ -54,6 +62,8 @@ namespace kTools.Mirrors.Editor
         // Properties
         SerializedProperty m_OffsetProp;
         SerializedProperty m_LayerMaskProp;
+        SerializedProperty m_ScopeProp;
+        SerializedProperty m_RenderersProp;
         SerializedProperty m_TextureScaleProp;
         SerializedProperty m_AllowHDR;
         SerializedProperty m_AllowMSAA;
@@ -68,6 +78,8 @@ namespace kTools.Mirrors.Editor
             // Get Properties
             m_OffsetProp = serializedObject.FindProperty(PropertyNames.Offset);
             m_LayerMaskProp = serializedObject.FindProperty(PropertyNames.LayerMask);
+            m_ScopeProp = serializedObject.FindProperty(PropertyNames.Scope);
+            m_RenderersProp = serializedObject.FindProperty(PropertyNames.Renderers);
             m_TextureScaleProp = serializedObject.FindProperty(PropertyNames.TextureScale);
             m_AllowHDR = serializedObject.FindProperty(PropertyNames.AllowHDR);
             m_AllowMSAA = serializedObject.FindProperty(PropertyNames.AllowMSAA);
@@ -124,6 +136,17 @@ namespace kTools.Mirrors.Editor
 
         void DrawOutputOptions()
         {
+            // Scope
+            EditorGUILayout.PropertyField(m_ScopeProp, Styles.Scope);
+
+            // Renderers
+            if(m_ScopeProp.enumValueIndex == (int)Mirror.OutputScope.Local)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(m_RenderersProp, Styles.Renderers);
+                EditorGUI.indentLevel--;
+            }
+
             // Texture Scale
             EditorGUI.BeginChangeCheck();
             var textureScale = EditorGUILayout.Slider(Styles.TextureScale, m_TextureScaleProp.floatValue, 0, 1);
