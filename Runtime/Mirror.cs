@@ -79,28 +79,56 @@ namespace kTools.Mirrors
 
 #region Properties
         /// <summary>Offset value for oplique near clip plane.</summary>
-        public float offest => m_Offset;
+        public float offest
+        {
+            get => m_Offset;
+            set => m_Offset = value;
+        }
 
         /// <summary>Which layers should the Mirror render.</summary>
-        public LayerMask layerMask => m_LayerMask;
+        public LayerMask layerMask
+        {
+            get => m_LayerMask;
+            set => m_LayerMask = value;
+        }
 
         /// <summary>
         /// Global output renders to the global texture. Only one Mirror can be global.
         /// Local output renders to one texture per Mirror, this is set on all elements of the Renderers list.
         /// </summary>
-        public OutputScope scope => m_Scope;
+        public OutputScope scope
+        {
+            get => m_Scope;
+            set => m_Scope = value;
+        }
 
         /// <summary>Renderers to set the reflection texture on.</summary>
-        public List<Renderer> renderers => m_Renderers;
+        public List<Renderer> renderers
+        {
+            get => m_Renderers;
+            set => m_Renderers = value;
+        }
 
         /// <summary>Scale value applied to the size of the source camera texture.</summary>
-        public float textureScale => m_TextureScale;
+        public float textureScale
+        {
+            get => m_TextureScale;
+            set => m_TextureScale = value;
+        }
 
         /// <summary>Should reflections be rendered in HDR.</summary>
-        public MirrorCameraOverride allowHDR => m_AllowHDR;
+        public MirrorCameraOverride allowHDR
+        {
+            get => m_AllowHDR;
+            set => m_AllowHDR = value;
+        }
 
         /// <summary>Should reflections be resolved with MSAA.</summary>
-        public MirrorCameraOverride allowMSAA => m_AllowMSAA;
+        public MirrorCameraOverride allowMSAA
+        {
+            get => m_AllowMSAA;
+            set => m_AllowMSAA = value;
+        }
 
         Camera reflectionCamera
         {
