@@ -11,9 +11,3 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Camera controls
 - Local mirrors
 - Support for kShading Lit and Toon Lit
-
-### Changed
-- Lorel Ipsum
-
-### Fixed
-- Lorel Ipsum
